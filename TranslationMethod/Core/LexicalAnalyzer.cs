@@ -14,11 +14,13 @@ namespace TranslationMethod.Core
         private int _currentColumn;
         private List<Token> _tokens;
 
+        // Алфавит исходного языка
         private readonly HashSet<char> _alphabet = new HashSet<char>
         {
-            '0', '1', 'a', 'b', 'c', 'd', '(', ')', '!', ':', '=', '/', ' ', '\r', '\n'
+            '0', '1', 'a', 'b', 'c', 'd', '(', ')', '!', ':', '=', '/', ' '
         };
 
+        // Специальные символы
         private readonly HashSet<char> _specialSymbols = new HashSet<char>
         {
             '(', ')', '!', ':', '=', '/', ' '
@@ -36,34 +38,57 @@ namespace TranslationMethod.Core
             {
                 while (_currentPosition < _sourceText.Length)
                 {
-                    char currentChar = GetCurrentChar();
+                    char currentChar = _sourceText[_currentPosition];
 
-                    if (!_alphabet.Contains(currentChar))
+                    // Если символ не в алфавите и это не управляющий символ - ошибка
+                    if (!_alphabet.Contains(currentChar) &&
+                        currentChar != '\r' && currentChar != '\n')
                     {
-                        return AnalysisResult.Error($"Символ не принадлежит алфавиту: '{(currentChar == '\r' ? "\\r" : currentChar == '\n' ? "\\n" : currentChar.ToString())}' " +
+                        // Но сначала проверяем, не комментарий ли это
+                        if (currentChar == '/' && (_currentPosition + 1 < _sourceText.Length) &&
+                            _sourceText[_currentPosition + 1] == '/')
+                        {
+                            SkipComment();
+                            continue;
+                        }
+
+                        return AnalysisResult.Error($"Символ не принадлежит алфавиту: '{currentChar}' " +
                                                    $"(позиция: строка {_currentLine}, столбец {_currentColumn})");
                     }
 
-                    if (currentChar == '/' && PeekNextChar() == '/')
+                    // Обработка комментариев
+                    if (currentChar == '/' && (_currentPosition + 1 < _sourceText.Length) &&
+                        _sourceText[_currentPosition + 1] == '/')
                     {
                         SkipComment();
                         continue;
                     }
 
+                    // Обработка переносов строк
                     if (currentChar == '\r' || currentChar == '\n')
                     {
                         ReadEndOfLineToken();
                         continue;
                     }
 
+                    // Токенизация обычных символов
                     Token token = ReadNextToken();
                     if (token != null)
                     {
                         _tokens.Add(token);
                     }
+                    else
+                    {
+                        // Если символ не распознан (этого не должно происходить), просто пропускаем
+                        MoveToNextChar();
+                    }
                 }
 
-                _tokens.Add(new Token(TokenType.EndText, "EndText", _currentLine, _currentColumn));
+                // Добавляем токен окончания текста
+                if (_tokens.Count > 0)
+                {
+                    _tokens.Add(new Token(TokenType.EndText, "EndText", _currentLine, _currentColumn));
+                }
 
                 string resultMessage = "Текст верен";
                 if (_tokens.Count > 0)
@@ -78,23 +103,52 @@ namespace TranslationMethod.Core
             }
         }
 
+        private void SkipComment()
+        {
+            // Пропускаем два символа '//'
+            MoveToNextChar(); // первый '/'
+            MoveToNextChar(); // второй '/'
+
+            // Пропускаем ВСЕ символы до конца строки
+            while (_currentPosition < _sourceText.Length)
+            {
+                char currentChar = _sourceText[_currentPosition];
+                if (currentChar == '\r' || currentChar == '\n')
+                {
+                    break;
+                }
+                MoveToNextChar();
+            }
+        }
+
         private void ReadEndOfLineToken()
         {
             int startLine = _currentLine;
-            int startColumn = _currentColumn;
-            char currentChar = GetCurrentChar();
+            char currentChar = _sourceText[_currentPosition];
 
-            if (currentChar == '\r' && PeekNextChar() == '\n')
+            // Обработка Windows-style \r\n
+            if (currentChar == '\r' && (_currentPosition + 1 < _sourceText.Length) &&
+                _sourceText[_currentPosition + 1] == '\n')
+            {
+                MoveToNextChar(); // пропускаем \r
+                MoveToNextChar(); // пропускаем \n
+            }
+            // Обработка Unix-style \n
+            else if (currentChar == '\n')
             {
                 MoveToNextChar();
-                MoveToNextChar();
             }
-            else
+            // Обработка одиночного \r
+            else if (currentChar == '\r')
             {
                 MoveToNextChar();
             }
 
-            _tokens.Add(new Token(TokenType.EndRow, "EndRow", startLine, startColumn));
+            // Добавляем EndRow только если в строке были другие токены
+            if (_tokens.Count > 0 && (_tokens[_tokens.Count - 1].Type != TokenType.EndRow || _tokens.Count == 1))
+            {
+                _tokens.Add(new Token(TokenType.EndRow, "EndRow", startLine, 1));
+            }
         }
 
         private Token ReadNextToken()
@@ -102,26 +156,32 @@ namespace TranslationMethod.Core
             if (_currentPosition >= _sourceText.Length)
                 return null;
 
-            char currentChar = GetCurrentChar();
+            char currentChar = _sourceText[_currentPosition];
             int startLine = _currentLine;
             int startColumn = _currentColumn;
 
+            // Пропускаем управляющие символы (они уже обработаны)
+            if (currentChar == '\r' || currentChar == '\n')
+                return null;
+
+            // Цифры (0 или 1)
             if (currentChar == '0' || currentChar == '1')
             {
                 return ReadDigitToken(startLine, startColumn);
             }
 
+            // Буквы (a, b, c, d)
             if (currentChar >= 'a' && currentChar <= 'd')
             {
                 return ReadLetterToken(startLine, startColumn);
             }
 
+            // Специальные символы
             if (_specialSymbols.Contains(currentChar))
             {
                 return ReadSpecialSymbolToken(startLine, startColumn);
             }
 
-            MoveToNextChar();
             return null;
         }
 
@@ -129,11 +189,18 @@ namespace TranslationMethod.Core
         {
             StringBuilder value = new StringBuilder();
 
-            while (_currentPosition < _sourceText.Length &&
-                   (GetCurrentChar() == '0' || GetCurrentChar() == '1'))
+            while (_currentPosition < _sourceText.Length)
             {
-                value.Append(GetCurrentChar());
-                MoveToNextChar();
+                char currentChar = _sourceText[_currentPosition];
+                if (currentChar == '0' || currentChar == '1')
+                {
+                    value.Append(currentChar);
+                    MoveToNextChar();
+                }
+                else
+                {
+                    break;
+                }
             }
 
             return new Token(TokenType.Digit, value.ToString(), line, column);
@@ -143,11 +210,18 @@ namespace TranslationMethod.Core
         {
             StringBuilder value = new StringBuilder();
 
-            while (_currentPosition < _sourceText.Length &&
-                   GetCurrentChar() >= 'a' && GetCurrentChar() <= 'd')
+            while (_currentPosition < _sourceText.Length)
             {
-                value.Append(GetCurrentChar());
-                MoveToNextChar();
+                char currentChar = _sourceText[_currentPosition];
+                if (currentChar >= 'a' && currentChar <= 'd')
+                {
+                    value.Append(currentChar);
+                    MoveToNextChar();
+                }
+                else
+                {
+                    break;
+                }
             }
 
             return new Token(TokenType.Letter, value.ToString(), line, column);
@@ -155,9 +229,12 @@ namespace TranslationMethod.Core
 
         private Token ReadSpecialSymbolToken(int line, int column)
         {
-            char symbol = GetCurrentChar();
+            char symbol = _sourceText[_currentPosition];
             MoveToNextChar();
-            return new Token(TokenType.SpecialSymbol, symbol.ToString(), line, column);
+
+            // Для пробела выводим специальное представление
+            string displayValue = symbol == ' ' ? "Space" : symbol.ToString();
+            return new Token(TokenType.SpecialSymbol, displayValue, line, column);
         }
 
         private string GetTokensString()
@@ -170,42 +247,21 @@ namespace TranslationMethod.Core
             return string.Join(", ", tokenStrings);
         }
 
-        private char GetCurrentChar()
-        {
-            if (_currentPosition >= _sourceText.Length)
-                throw new IndexOutOfRangeException();
-
-            return _sourceText[_currentPosition];
-        }
-
-        private char? PeekNextChar()
-        {
-            int nextPosition = _currentPosition + 1;
-            if (nextPosition >= _sourceText.Length)
-                return null;
-
-            return _sourceText[nextPosition];
-        }
-
         private void MoveToNextChar()
         {
             if (_currentPosition >= _sourceText.Length)
-                throw new IndexOutOfRangeException();
+                return;
 
             char currentChar = _sourceText[_currentPosition];
 
-            if (currentChar == '\r')
+            if (currentChar == '\n')
             {
-                if (PeekNextChar() == '\n')
-                {
-                    _currentPosition++;
-                }
-
                 _currentLine++;
                 _currentColumn = 1;
             }
-            else if (currentChar == '\n')
+            else if (currentChar == '\r')
             {
+                // Для \r\n обрабатываем в ReadEndOfLineToken
                 _currentLine++;
                 _currentColumn = 1;
             }
@@ -215,28 +271,6 @@ namespace TranslationMethod.Core
             }
 
             _currentPosition++;
-        }
-
-        private void SkipComment()
-        {
-            // Пропускаем два символа '//'
-            MoveToNextChar();
-            MoveToNextChar();
-
-            // Пропускаем все символы до конца строки
-            while (_currentPosition < _sourceText.Length &&
-                   _sourceText[_currentPosition] != '\r' &&
-                   _sourceText[_currentPosition] != '\n')
-            {
-                MoveToNextChar();
-            }
-
-            // Если после комментария идет перенос строки, обрабатываем его
-            if (_currentPosition < _sourceText.Length &&
-                (_sourceText[_currentPosition] == '\r' || _sourceText[_currentPosition] == '\n'))
-            {
-                ReadEndOfLineToken();
-            }
         }
     }
 
@@ -300,7 +334,13 @@ namespace TranslationMethod.Core
                 return string.Join(", ", parts);
             }
 
-            // Для специальных символов, EndRow и EndText выводим только тип
+            // Для специальных символов выводим тип и значение
+            if (Type == TokenType.SpecialSymbol)
+            {
+                return $"{typeName} {Value}";
+            }
+
+            // Для EndRow и EndText выводим только тип
             return typeName;
         }
     }
