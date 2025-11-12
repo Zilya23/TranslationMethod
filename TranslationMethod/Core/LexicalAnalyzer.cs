@@ -40,11 +40,9 @@ namespace TranslationMethod.Core
                 {
                     char currentChar = _sourceText[_currentPosition];
 
-                    // Если символ не в алфавите и это не управляющий символ - ошибка
                     if (!_alphabet.Contains(currentChar) &&
                         currentChar != '\r' && currentChar != '\n')
                     {
-                        // Но сначала проверяем, не комментарий ли это
                         if (currentChar == '/' && (_currentPosition + 1 < _sourceText.Length) &&
                             _sourceText[_currentPosition + 1] == '/')
                         {
@@ -56,7 +54,6 @@ namespace TranslationMethod.Core
                                                    $"(позиция: строка {_currentLine}, столбец {_currentColumn})");
                     }
 
-                    // Обработка комментариев
                     if (currentChar == '/' && (_currentPosition + 1 < _sourceText.Length) &&
                         _sourceText[_currentPosition + 1] == '/')
                     {
@@ -64,14 +61,12 @@ namespace TranslationMethod.Core
                         continue;
                     }
 
-                    // Обработка переносов строк
                     if (currentChar == '\r' || currentChar == '\n')
                     {
                         ReadEndOfLineToken();
                         continue;
                     }
 
-                    // Токенизация обычных символов
                     Token token = ReadNextToken();
                     if (token != null)
                     {
@@ -79,12 +74,10 @@ namespace TranslationMethod.Core
                     }
                     else
                     {
-                        // Если символ не распознан (этого не должно происходить), просто пропускаем
                         MoveToNextChar();
                     }
                 }
 
-                // Добавляем токен окончания текста
                 if (_tokens.Count > 0)
                 {
                     _tokens.Add(new Token(TokenType.EndText, "EndText", _currentLine, _currentColumn));
@@ -106,10 +99,9 @@ namespace TranslationMethod.Core
         private void SkipComment()
         {
             // Пропускаем два символа '//'
-            MoveToNextChar(); // первый '/'
-            MoveToNextChar(); // второй '/'
+            MoveToNextChar();
+            MoveToNextChar();
 
-            // Пропускаем ВСЕ символы до конца строки
             while (_currentPosition < _sourceText.Length)
             {
                 char currentChar = _sourceText[_currentPosition];
@@ -126,25 +118,21 @@ namespace TranslationMethod.Core
             int startLine = _currentLine;
             char currentChar = _sourceText[_currentPosition];
 
-            // Обработка Windows-style \r\n
             if (currentChar == '\r' && (_currentPosition + 1 < _sourceText.Length) &&
                 _sourceText[_currentPosition + 1] == '\n')
             {
-                MoveToNextChar(); // пропускаем \r
-                MoveToNextChar(); // пропускаем \n
+                MoveToNextChar();
+                MoveToNextChar();
             }
-            // Обработка Unix-style \n
             else if (currentChar == '\n')
             {
                 MoveToNextChar();
             }
-            // Обработка одиночного \r
             else if (currentChar == '\r')
             {
                 MoveToNextChar();
             }
 
-            // Добавляем EndRow только если в строке были другие токены
             if (_tokens.Count > 0 && (_tokens[_tokens.Count - 1].Type != TokenType.EndRow || _tokens.Count == 1))
             {
                 _tokens.Add(new Token(TokenType.EndRow, "EndRow", startLine, 1));
@@ -160,23 +148,19 @@ namespace TranslationMethod.Core
             int startLine = _currentLine;
             int startColumn = _currentColumn;
 
-            // Пропускаем управляющие символы (они уже обработаны)
             if (currentChar == '\r' || currentChar == '\n')
                 return null;
 
-            // Цифры (0 или 1)
             if (currentChar == '0' || currentChar == '1')
             {
                 return ReadDigitToken(startLine, startColumn);
             }
 
-            // Буквы (a, b, c, d)
             if (currentChar >= 'a' && currentChar <= 'd')
             {
                 return ReadLetterToken(startLine, startColumn);
             }
 
-            // Специальные символы
             if (_specialSymbols.Contains(currentChar))
             {
                 return ReadSpecialSymbolToken(startLine, startColumn);
@@ -232,7 +216,6 @@ namespace TranslationMethod.Core
             char symbol = _sourceText[_currentPosition];
             MoveToNextChar();
 
-            // Для пробела выводим специальное представление
             string displayValue = symbol == ' ' ? "Space" : symbol.ToString();
             return new Token(TokenType.SpecialSymbol, displayValue, line, column);
         }
@@ -261,7 +244,6 @@ namespace TranslationMethod.Core
             }
             else if (currentChar == '\r')
             {
-                // Для \r\n обрабатываем в ReadEndOfLineToken
                 _currentLine++;
                 _currentColumn = 1;
             }
@@ -323,7 +305,6 @@ namespace TranslationMethod.Core
                     break;
             }
 
-            // Для цифр и букв выводим каждый символ отдельно
             if (Type == TokenType.Digit || Type == TokenType.Letter)
             {
                 List<string> parts = new List<string>();
@@ -334,13 +315,11 @@ namespace TranslationMethod.Core
                 return string.Join(", ", parts);
             }
 
-            // Для специальных символов выводим тип и значение
             if (Type == TokenType.SpecialSymbol)
             {
                 return $"{typeName} {Value}";
             }
 
-            // Для EndRow и EndText выводим только тип
             return typeName;
         }
     }
