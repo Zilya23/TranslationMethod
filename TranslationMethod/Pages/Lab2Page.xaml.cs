@@ -36,9 +36,17 @@ namespace TranslationMethod.Pages
             {
                 try
                 {
+                    StringBuilder debugOutput = new StringBuilder();
+                    LexicalAnalyzer analyzer = new LexicalAnalyzer();
+
                     AnalysisResult result = _lexicalAnalyzer.Analyze(sourceText);
 
-                    tb_FinishText.Text = result.Message;
+                    if (result.IsSuccess)
+                        debugOutput.AppendLine(result.Message);
+                    else
+                        debugOutput.AppendLine(result.Message);
+
+                    tb_FinishText.Text = debugOutput.ToString();
                 }
                 catch (LexicalException ex)
                 {
