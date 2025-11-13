@@ -37,7 +37,7 @@ namespace TranslationMethod
                 if (cb_LabNumber.SelectedIndex == 0)
                     MainPage.Navigate(new Lab1Page());
                 else if (cb_LabNumber.SelectedIndex == 1)
-                    MainPage.Navigate(new Lab1Page());
+                    MainPage.Navigate(new Lab2Page());
                 else
                     MainPage.Navigate(new Lab1Page());
             }
